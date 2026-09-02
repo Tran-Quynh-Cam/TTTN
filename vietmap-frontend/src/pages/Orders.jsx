@@ -250,6 +250,16 @@ export default function Orders() {
   const handleSave = async () => {
     try {
       const vals = await form.validateFields();
+      const isNew = !editModal || editModal === 'new';
+
+      if (isNew) {
+        const isDuplicate = data.some(o => (o.soBienNhan || o.so_bien_nhan || '').trim().toLowerCase() === (vals.soBienNhan || '').trim().toLowerCase());
+        if (isDuplicate) {
+          message.error(`Mã đơn hàng / Số biên nhận "${vals.soBienNhan}" đã tồn tại trong hệ thống! Vui lòng thay đổi mã khác.`);
+          return;
+        }
+      }
+
       const fmtDate = d => (d ? dayjs(d).format('YYYY-MM-DD') : null);
       const payload = {
         ...vals,
@@ -270,7 +280,8 @@ export default function Orders() {
       setEditModal(null); refresh();
     } catch (err) {
       console.error(err);
-      message.error('Lỗi khi lưu đơn hàng!');
+      const errMsg = err.response?.data?.error || err.message || 'Lỗi khi lưu đơn hàng!';
+      message.error(errMsg);
     }
   };
 
@@ -551,7 +562,30 @@ export default function Orders() {
         <Form form={form} layout="vertical" size="middle" onValuesChange={handleFormValuesChange}>
           <div style={{ fontWeight: 700, color: '#1677ff', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid #e6f4ff' }}>Thông tin chung</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0 16px' }}>
-            <Form.Item name="soBienNhan" label="Số biên nhận / Mã đơn *" rules={[{ required: true, message: 'Vui lòng nhập số biên nhận' }]}><Input placeholder="BN-2024-XXX" /></Form.Item>
+            <Form.Item
+              name="soBienNhan"
+              label="Số biên nhận / Mã đơn *"
+              rules={[
+                { required: true, message: 'Vui lòng nhập số biên nhận' },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    const isEditing = editModal && editModal !== 'new';
+                    const exists = data.some(o => {
+                      const code = o.soBienNhan || o.so_bien_nhan;
+                      if (isEditing && (o.id === editModal?.id || o.id === editModal)) return false;
+                      return code && code.trim().toLowerCase() === value.trim().toLowerCase();
+                    });
+                    if (exists) {
+                      return Promise.reject(new Error(`Mã đơn "${value}" đã tồn tại trên hệ thống!`));
+                    }
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <Input placeholder="BN-2024-XXX" />
+            </Form.Item>
             <Form.Item name="ngayTao" label="Ngày lập / Tạo"><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item>
             <Form.Item name="loaiDonHang" label="Loại đơn hàng">
               <Select options={[
@@ -622,7 +656,7 @@ export default function Orders() {
             }}>Upload Chứng từ</Button>
           </div>
           <Table
-            dataSource={(Array.isArray(documents) ? documents : []).filter(d => currentSoBienNhan && d.donHang === currentSoBienNhan)}
+            dataSource={(Array.isArray(documents) ? documents : []).filter(d => (editModal && editModal !== 'new') && currentSoBienNhan && d.donHang === currentSoBienNhan)}
             columns={docColumns}
             rowKey="id"
             size="small"

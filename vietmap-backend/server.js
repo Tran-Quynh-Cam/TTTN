@@ -367,8 +367,19 @@ app.post('/api/orders', authenticateToken, authorizeRoles('admin', 'nhanvien'), 
   const resolvedBienGuiId = bienGuiId || senderId || null;
   const resolvedBienNhanId = bienNhanId || receiverId || null;
 
+  // Check duplicate so_bien_nhan upfront
+  if (!soBienNhan) {
+    return res.status(400).json({ error: 'Vui lòng nhập Số biên nhận / Mã đơn hàng!' });
+  }
+
   const client = await db.pool.connect();
   try {
+    const dupCheck = await client.query('SELECT id FROM orders WHERE so_bien_nhan = $1', [soBienNhan]);
+    if (dupCheck.rows.length > 0) {
+      client.release();
+      return res.status(400).json({ error: `Mã đơn hàng / Số biên nhận "${soBienNhan}" đã tồn tại trong hệ thống! Vui lòng nhập mã đơn khác.` });
+    }
+
     await client.query('BEGIN');
 
     // 1. Insert into orders
@@ -446,6 +457,9 @@ app.post('/api/orders', authenticateToken, authorizeRoles('admin', 'nhanvien'), 
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Lỗi khi tạo đơn hàng:', err);
+    if (err.code === '23505' || err.message?.includes('orders_so_bien_nhan_key')) {
+      return res.status(400).json({ error: `Mã đơn hàng / Số biên nhận "${soBienNhan}" đã tồn tại trong hệ thống!` });
+    }
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
