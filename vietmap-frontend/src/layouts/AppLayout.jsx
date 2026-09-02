@@ -33,7 +33,6 @@ const NAV = [
   { key: '/locations',      icon: <EnvironmentOutlined />,  label: 'Trạm & Địa điểm' },
   { key: '/stakeholders',   icon: <TeamOutlined />,         label: 'Các bên liên quan' },
   { key: '/users',          icon: <UserOutlined />,         label: 'Quản lý người dùng' },
-  { key: '/driver',         icon: <CarOutlined style={{ color: '#52c41a' }} />, label: 'Cổng tài xế (Mobile)' },
 ];
 
 const MOBILE_BREAKPOINT = 768;

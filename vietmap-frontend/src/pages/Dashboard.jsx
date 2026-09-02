@@ -49,8 +49,25 @@ export default function Dashboard() {
       setMaint(maintRes.data || []);
       setRepairs([]);
 
+      const defaultExpenses = [
+        { id: 1, maChiPhi: 'CP-001', bienSo: '15H-096.12', loaiChiPhi: 'nhien_lieu', tenChiPhi: 'Đổ dầu Diesel 200 lít', soTien: 4200000, ngay: '2026-08-30', ghiChu: 'Đổ cây dầu Petrolimex Cảng Cát Lái' },
+        { id: 2, maChiPhi: 'CP-002', bienSo: '15H-096.34', loaiChiPhi: 'cau_duong', tenChiPhi: 'Vé trạm BOT Cao tốc Hải Phòng', soTien: 380000, ngay: '2026-08-31', ghiChu: 'ETC tự động trừ' },
+        { id: 3, maChiPhi: 'CP-003', bienSo: '15H-096.56', loaiChiPhi: 'ben_bai', tenChiPhi: 'Phí lưu bãi container đêm', soTien: 500000, ngay: '2026-09-01', ghiChu: 'Cảng Tân Cảng Cát Lái' },
+        { id: 4, maChiPhi: 'CP-004', bienSo: '15H-096.78', loaiChiPhi: 'sua_chua', tenChiPhi: 'Thay nhớt & lọc phanh', soTien: 2500000, ngay: '2026-09-01', ghiChu: 'Bảo dưỡng định kỳ 10.000km' },
+      ];
+
       const storedExp = localStorage.getItem('fleet_expenses_data');
-      if (storedExp) setExpenses(JSON.parse(storedExp));
+      if (storedExp) {
+        try {
+          const parsed = JSON.parse(storedExp);
+          setExpenses(parsed.length > 0 ? parsed : defaultExpenses);
+        } catch {
+          setExpenses(defaultExpenses);
+        }
+      } else {
+        setExpenses(defaultExpenses);
+        localStorage.setItem('fleet_expenses_data', JSON.stringify(defaultExpenses));
+      }
     } catch (err) {
       console.error('Dashboard fetch error:', err);
     } finally {

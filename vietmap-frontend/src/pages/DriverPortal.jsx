@@ -449,16 +449,6 @@ export default function DriverPortal() {
             >
               Xác nhận thông tin
             </Button>
-            
-            <div style={{ textAlign: 'center', marginTop: 20 }}>
-              <Button 
-                type="link" 
-                onClick={() => window.location.href = '/'}
-                style={{ color: '#2563eb', fontSize: 13, fontWeight: 600 }}
-              >
-                &larr; Quay lại trang quản trị FleetOS
-              </Button>
-            </div>
           </FormSpace>
         </Card>
       </div>
