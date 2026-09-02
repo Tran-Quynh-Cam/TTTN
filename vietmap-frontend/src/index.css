@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+* { box-sizing: border-box; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f7fa; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f0f0f0; }
+::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #999; }
+
+/* Ant Design light input overrides for login page */
+.ant-input-affix-wrapper.light-input,
+.ant-input.light-input { 
+  background: #ffffff !important; 
+  border-color: #cbd5e1 !important; 
+  color: #0f172a !important; 
+  transition: all 0.2s ease-in-out;
+}
+.ant-input-affix-wrapper.light-input:hover,
+.ant-input.light-input:hover {
+  border-color: #94a3b8 !important;
+}
+.ant-input-affix-wrapper-focused.light-input,
+.ant-input-affix-wrapper.light-input:focus,
+.ant-input.light-input:focus {
+  border-color: #0052CC !important;
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.15) !important;
+}
+.ant-input-affix-wrapper.light-input .ant-input { 
+  background: transparent !important; 
+  color: #0f172a !important; 
+  font-size: 14px;
+}
+.ant-input-affix-wrapper.light-input .ant-input::placeholder {
+  color: #94a3b8 !important;
+}
+.ant-input-affix-wrapper.light-input .ant-input-prefix { 
+  color: #64748b !important; 
+  margin-right: 8px;
+}
+.ant-input-affix-wrapper.light-input .ant-input-suffix {
+  color: #64748b !important;
+}
+.ant-input-affix-wrapper.light-input .ant-input-suffix span {
+  color: #64748b !important;
+}
+.ant-input-affix-wrapper.light-input .ant-input-suffix span:hover {
+  color: #0052CC !important;
+}
+
+/* Sidebar active state */
+.ant-menu-dark .ant-menu-item-selected { border-radius: 8px; }
+
+/* Page content animation */
+.page-enter { animation: fadeIn 0.25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
