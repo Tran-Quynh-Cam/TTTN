@@ -234,16 +234,16 @@ app.post('/api/driver/login', async (req, res) => {
 // 2. ORDERS API
 const getCoordBackend = (name) => {
   const GEO = {
-    'Cảng Cát Lái':     [106.7694, 10.7769], // [longitude, latitude] for PostGIS MakePoint
-    'Cảng VICT':        [106.6890, 10.7625],
-    'Cảng Hiệp Phước':  [106.7108, 10.6569],
-    'ICD Phước Long':   [106.7450, 10.8020],
-    'KCN Bình Dương':   [106.7220, 10.9808],
-    'KCN Long Hậu':     [106.6686, 10.6222],
-    'Depot An Sơn':     [106.6200, 10.8514],
-    'Depot Cát Lái':    [106.7600, 10.7690],
+    'Cảng Cát Lái': [106.7694, 10.7769], // [longitude, latitude] for PostGIS MakePoint
+    'Cảng VICT': [106.6890, 10.7625],
+    'Cảng Hiệp Phước': [106.7108, 10.6569],
+    'ICD Phước Long': [106.7450, 10.8020],
+    'KCN Bình Dương': [106.7220, 10.9808],
+    'KCN Long Hậu': [106.6686, 10.6222],
+    'Depot An Sơn': [106.6200, 10.8514],
+    'Depot Cát Lái': [106.7600, 10.7690],
     'Depot Trường Thọ': [106.7550, 10.8210],
-    'Depot Phú Hữu':    [106.7820, 10.8390],
+    'Depot Phú Hữu': [106.7820, 10.8390],
   };
   if (GEO[name]) return GEO[name];
   const h = [...(name || 'X')].reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -782,17 +782,21 @@ app.post('/api/orders/:id/send-email', authenticateToken, async (req, res) => {
 
     const toEmail = order.email_tai_xe || order.driver_email || 'Tqcam1808@gmail.com';
 
+    const smtpPort = Number(process.env.SMTP_PORT) || 587;
+    const isSecure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : smtpPort === 465;
+
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT) || 465,
-      secure: process.env.SMTP_SECURE !== 'false', // mặc định true cho cổng 465 SSL
+      port: smtpPort,
+      secure: isSecure,
+      family: 4, //  BẮT BUỘC TRÊN RENDER: Ép buộc dùng IPv4 để tránh lỗi ENETUNREACH IPv6
       auth: {
         user: process.env.SMTP_USER,
         pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
       },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
     });
 
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('vi-VN') : '—';
@@ -888,11 +892,11 @@ app.post('/api/orders/:id/send-email', authenticateToken, async (req, res) => {
         let fileName = doc.tenFile || doc.tenChungTu || `ChungTu_${doc.id || Date.now()}`;
         // If fileName doesn't have an extension but we can guess from the data URL
         if (!fileName.includes('.')) {
-            if (doc.fileUrl.startsWith('data:application/pdf')) fileName += '.pdf';
-            else if (doc.fileUrl.startsWith('data:image/jpeg')) fileName += '.jpg';
-            else if (doc.fileUrl.startsWith('data:image/png')) fileName += '.png';
+          if (doc.fileUrl.startsWith('data:application/pdf')) fileName += '.pdf';
+          else if (doc.fileUrl.startsWith('data:image/jpeg')) fileName += '.jpg';
+          else if (doc.fileUrl.startsWith('data:image/png')) fileName += '.png';
         }
-        
+
         attachments.push({
           filename: fileName,
           path: doc.fileUrl // Nodemailer natively supports Data URIs
