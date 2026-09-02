@@ -321,23 +321,23 @@ export default function Dispatch() {
         lay: { 
           reached: !!gpsSaved.lay?.reached, 
           time: gpsSaved.lay?.time || null, 
-          driverTime: (driverProg.step1 ? driverProg.step1_time : null) || gpsSaved.lay?.driverTime || null 
+          driverTime: activeMapOrder.ngay_lay_hang || activeMapOrder.ngayLayHang || (driverProg.step1 ? driverProg.step1_time : null) || gpsSaved.lay?.driverTime || null 
         },
         giao: { 
           reached: !!gpsSaved.giao?.reached, 
           time: gpsSaved.giao?.time || null, 
-          driverTime: (driverProg.step2 ? driverProg.step2_time : null) || gpsSaved.giao?.driverTime || null 
+          driverTime: activeMapOrder.ngay_giao_hang || activeMapOrder.ngayGiaoHang || (driverProg.step2 ? driverProg.step2_time : null) || gpsSaved.giao?.driverTime || null 
         },
         tra: { 
           reached: !!gpsSaved.tra?.reached, 
           time: gpsSaved.tra?.time || null, 
-          driverTime: (driverProg.step3 ? driverProg.step3_time : null) || gpsSaved.tra?.driverTime || null 
+          driverTime: activeMapOrder.ngay_tra_rong || activeMapOrder.ngayTraRong || (driverProg.step3 ? driverProg.step3_time : null) || gpsSaved.tra?.driverTime || null 
         }
       });
       setSimStep(0);
       setIsSimulating(false);
     }
-  }, [activeMapOrder?.id, trackingModalOpen]);
+  }, [activeMapOrder?.id, activeMapOrder?.ngay_lay_hang, activeMapOrder?.ngay_giao_hang, activeMapOrder?.ngay_tra_rong, trackingModalOpen]);
 
   // Simulation timer loop
   useEffect(() => {

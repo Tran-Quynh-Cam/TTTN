@@ -532,8 +532,21 @@ app.put('/api/orders/:id', authenticateToken, authorizeRoles('admin', 'nhanvien'
         return res.status(403).json({ message: 'Bạn không có quyền cập nhật đơn hàng này' });
       }
 
-      // Driver can update status
+      // Driver can update status and update milestone timestamps in existing order_details columns
       await client.query(`UPDATE orders SET trang_thai=$1 WHERE id=$2`, [trangThai, orderId]);
+
+      if (body.progress) {
+        let prog = typeof body.progress === 'string' ? JSON.parse(body.progress) : body.progress;
+        if (prog.step1_time) {
+          await client.query(`UPDATE order_details SET ngay_lay_hang=$1 WHERE order_id=$2`, [prog.step1_time, orderId]);
+        }
+        if (prog.step2_time) {
+          await client.query(`UPDATE order_details SET ngay_giao_hang=$1 WHERE order_id=$2`, [prog.step2_time, orderId]);
+        }
+        if (prog.step3_time) {
+          await client.query(`UPDATE order_details SET ngay_tra_rong=$1 WHERE order_id=$2`, [prog.step3_time, orderId]);
+        }
+      }
 
       // Log history
       let changes = `Tài xế cập nhật trạng thái từ '${currentOrder.trang_thai}' sang '${trangThai}'.`;
