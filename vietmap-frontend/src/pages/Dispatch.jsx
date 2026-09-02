@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Table, Card, Typography, Tag, Space, Button, Select, Input, Modal, Form, message, Row, Col, Statistic, Progress, Timeline } from 'antd';
 import { CarOutlined, PlusOutlined, EditOutlined, UserOutlined, ClockCircleOutlined, CheckCircleOutlined, SyncOutlined, SendOutlined, MailOutlined, FilterOutlined, ReloadOutlined, CheckOutlined, SearchOutlined, FilterFilled, CheckCircleFilled, PlayCircleOutlined, PauseCircleOutlined, RedoOutlined, CompassOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import API from '../services/api';
+import API, { socket } from '../services/api';
 import DB from '../store/db';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -222,50 +222,6 @@ export default function Dispatch() {
     tra: { reached: false, time: null, driverTime: null }
   });
 
-  const handleDriverConfirm = async (type) => {
-    if (!activeMapOrder) return;
-    const nowStr = dayjs().format('HH:mm:ss DD/MM/YYYY');
-    setMilestones(prev => {
-      const next = {
-        ...prev,
-        [type]: {
-          ...(prev[type] || {}),
-          driverTime: nowStr
-        }
-      };
-      localStorage.setItem(`vm_gps_milestones_${activeMapOrder.id}`, JSON.stringify(next));
-      return next;
-    });
-
-    // Sync progress storage for DriverPortal
-    try {
-      const savedProgress = localStorage.getItem('fleetos_order_progress_v1');
-      const parsed = savedProgress ? JSON.parse(savedProgress) : {};
-      const currentProgress = parsed[activeMapOrder.id] || { step1: false, step2: false, step3: false };
-      const stepKey = type === 'lay' ? 'step1' : (type === 'giao' ? 'step2' : 'step3');
-      currentProgress[stepKey] = true;
-      currentProgress[`${stepKey}_time`] = nowStr;
-      parsed[activeMapOrder.id] = currentProgress;
-      localStorage.setItem('fleetos_order_progress_v1', JSON.stringify(parsed));
-    } catch (e) {}
-
-    // Tự động chuyển trạng thái đơn hàng sang Hoàn thành khi tài xế xác nhận trạm 3 (Trả Rỗng)
-    if (type === 'tra') {
-      try {
-        await API.updateOrder(activeMapOrder.id, {
-          ...activeMapOrder,
-          soBienNhan: activeMapOrder.so_bien_nhan || activeMapOrder.soBienNhan,
-          trangThai: 'hoan_thanh'
-        });
-        fetchData();
-      } catch (e) {
-        console.error('Lỗi tự động cập nhật hoàn thành đơn:', e);
-      }
-    }
-
-    message.success(`👤 Tài xế đã bấm xác nhận trạm lúc ${nowStr}`);
-  };
-
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -292,23 +248,63 @@ export default function Dispatch() {
     fetchData();
   }, []);
 
+  // Listen to real-time socket events from drivers
+  useEffect(() => {
+    const handleRealtimeUpdate = (data) => {
+      console.log('📡 Realtime station update received:', data);
+      fetchData();
+      if (data?.orderId && activeMapOrder && (data.orderId === activeMapOrder.id || data.id === activeMapOrder.id)) {
+        if (data.progress) {
+          let prog = typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress;
+          setMilestones({
+            lay: { reached: !!prog.step1, time: prog.step1_time, driverTime: prog.step1_time },
+            giao: { reached: !!prog.step2, time: prog.step2_time, driverTime: prog.step2_time },
+            tra: { reached: !!prog.step3, time: prog.step3_time, driverTime: prog.step3_time }
+          });
+        }
+      }
+      message.info({ content: '⚡ Đã nhận cập nhật tiến độ trạm mới từ tài xế!', key: 'rt_station_msg' });
+    };
+
+    if (socket) {
+      socket.on('order_progress_updated', handleRealtimeUpdate);
+      socket.on('order_updated', handleRealtimeUpdate);
+    }
+
+    return () => {
+      if (socket) {
+        socket.off('order_progress_updated', handleRealtimeUpdate);
+        socket.off('order_updated', handleRealtimeUpdate);
+      }
+    };
+  }, [activeMapOrder?.id]);
+
   // Load saved milestones when opening tracking modal or selecting a new order
   useEffect(() => {
     if (activeMapOrder && trackingModalOpen) {
-      const saved = localStorage.getItem(`vm_gps_milestones_${activeMapOrder.id}`);
-      if (saved) {
+      let prog = {};
+      if (activeMapOrder.progress) {
         try {
-          setMilestones(JSON.parse(saved));
-        } catch (e) {
-          setMilestones({ lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } });
-        }
-      } else {
-        setMilestones({ lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } });
+          prog = typeof activeMapOrder.progress === 'string' ? JSON.parse(activeMapOrder.progress) : activeMapOrder.progress;
+        } catch (e) {}
       }
+      if (!prog.step1 && !prog.step2 && !prog.step3) {
+        try {
+          const savedProgress = localStorage.getItem('fleetos_order_progress_v1');
+          const parsed = savedProgress ? JSON.parse(savedProgress) : {};
+          if (parsed[activeMapOrder.id]) prog = parsed[activeMapOrder.id];
+        } catch (e) {}
+      }
+
+      setMilestones({
+        lay: { reached: !!prog.step1, time: prog.step1_time, driverTime: prog.step1_time },
+        giao: { reached: !!prog.step2, time: prog.step2_time, driverTime: prog.step2_time },
+        tra: { reached: !!prog.step3, time: prog.step3_time, driverTime: prog.step3_time }
+      });
       setSimStep(0);
       setIsSimulating(false);
     }
-  }, [activeMapOrder?.id, trackingModalOpen]);
+  }, [activeMapOrder?.id, activeMapOrder?.progress, trackingModalOpen]);
 
   // Simulation timer loop
   useEffect(() => {
@@ -872,38 +868,14 @@ export default function Dispatch() {
                     </div>
                     {(milestones.lay?.reached || milestones.lay?.driverTime) ? (
                       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        {milestones.lay?.reached ? (
-                          <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Đã qua điểm (GPS)</strong></div>
-                        ) : (
-                          <div style={{ color: '#fa8c16' }}><ClockCircleOutlined style={{ marginRight: 4 }} /> <strong>Chờ xe đến (GPS)</strong></div>
-                        )}
-                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.lay?.time || '⏳ Chưa đến điểm (GPS)'}</b></div>
-                        <div style={{ color: '#595959', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-                          <span>👤 Thời gian tài xế bấm: <b style={{ color: milestones.lay?.driverTime ? '#1677ff' : '#8c8c8c' }}>{milestones.lay?.driverTime || '—'}</b></span>
-                          {!milestones.lay?.driverTime && (
-                            <Button
-                              size="small"
-                              type="primary"
-                              ghost
-                              style={{ fontSize: 11, height: 22, padding: '0 6px' }}
-                              onClick={() => handleDriverConfirm('lay')}
-                            >
-                              👆 TX bấm (Demo)
-                            </Button>
-                          )}
+                        <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Tài xế đã xác nhận trạm</strong></div>
+                        <div style={{ color: '#595959', marginTop: 4 }}>
+                          👤 Thời gian TX bấm: <b style={{ color: '#1677ff' }}>{milestones.lay?.driverTime || milestones.lay?.time || '—'}</b>
                         </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>⏳ Chưa qua (Bật GPS để giả lập...)</span>
-                        <Button
-                          size="small"
-                          type="default"
-                          style={{ fontSize: 11, height: 22, padding: '0 6px' }}
-                          onClick={() => handleDriverConfirm('lay')}
-                        >
-                          👆 TX bấm (Demo)
-                        </Button>
+                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                        <span>⏳ Chờ tài xế xác nhận tại cổng...</span>
                       </div>
                     )}
                   </Timeline.Item>
@@ -921,38 +893,14 @@ export default function Dispatch() {
                     </div>
                     {(milestones.giao?.reached || milestones.giao?.driverTime) ? (
                       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        {milestones.giao?.reached ? (
-                          <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Đã qua điểm (GPS)</strong></div>
-                        ) : (
-                          <div style={{ color: '#fa8c16' }}><ClockCircleOutlined style={{ marginRight: 4 }} /> <strong>Chờ xe đến (GPS)</strong></div>
-                        )}
-                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.giao?.time || '⏳ Chưa đến điểm (GPS)'}</b></div>
-                        <div style={{ color: '#595959', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-                          <span>👤 Thời gian tài xế bấm: <b style={{ color: milestones.giao?.driverTime ? '#1677ff' : '#8c8c8c' }}>{milestones.giao?.driverTime || '—'}</b></span>
-                          {!milestones.giao?.driverTime && (
-                            <Button
-                              size="small"
-                              type="primary"
-                              ghost
-                              style={{ fontSize: 11, height: 22, padding: '0 6px' }}
-                              onClick={() => handleDriverConfirm('giao')}
-                            >
-                              👆 TX bấm (Demo)
-                            </Button>
-                          )}
+                        <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Tài xế đã xác nhận trạm</strong></div>
+                        <div style={{ color: '#595959', marginTop: 4 }}>
+                          👤 Thời gian TX bấm: <b style={{ color: '#1677ff' }}>{milestones.giao?.driverTime || milestones.giao?.time || '—'}</b>
                         </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{simStep > 0 ? '🚚 Xe đang di chuyển đến...' : '⏳ Chờ định vị GPS...'}</span>
-                        <Button
-                          size="small"
-                          type="default"
-                          style={{ fontSize: 11, height: 22, padding: '0 6px' }}
-                          onClick={() => handleDriverConfirm('giao')}
-                        >
-                          👆 TX bấm (Demo)
-                        </Button>
+                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                        <span>⏳ Chờ tài xế xác nhận giao hàng...</span>
                       </div>
                     )}
                   </Timeline.Item>
@@ -970,38 +918,14 @@ export default function Dispatch() {
                     </div>
                     {(milestones.tra?.reached || milestones.tra?.driverTime) ? (
                       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        {milestones.tra?.reached ? (
-                          <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Hoàn thành hạ cont (GPS)</strong></div>
-                        ) : (
-                          <div style={{ color: '#fa8c16' }}><ClockCircleOutlined style={{ marginRight: 4 }} /> <strong>Chờ xe đến (GPS)</strong></div>
-                        )}
-                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.tra?.time || '⏳ Chưa đến điểm (GPS)'}</b></div>
-                        <div style={{ color: '#595959', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-                          <span>👤 Thời gian tài xế bấm: <b style={{ color: milestones.tra?.driverTime ? '#1677ff' : '#8c8c8c' }}>{milestones.tra?.driverTime || '—'}</b></span>
-                          {!milestones.tra?.driverTime && (
-                            <Button
-                              size="small"
-                              type="primary"
-                              ghost
-                              style={{ fontSize: 11, height: 22, padding: '0 6px' }}
-                              onClick={() => handleDriverConfirm('tra')}
-                            >
-                              👆 TX bấm (Demo)
-                            </Button>
-                          )}
+                        <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Hoàn thành hạ cont / trả rỗng</strong></div>
+                        <div style={{ color: '#595959', marginTop: 4 }}>
+                          👤 Thời gian TX bấm: <b style={{ color: '#1677ff' }}>{milestones.tra?.driverTime || milestones.tra?.time || '—'}</b>
                         </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>⏳ Chưa hoàn thành</span>
-                        <Button
-                          size="small"
-                          type="default"
-                          style={{ fontSize: 11, height: 22, padding: '0 6px' }}
-                          onClick={() => handleDriverConfirm('tra')}
-                        >
-                          👆 TX bấm (Demo)
-                        </Button>
+                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                        <span>⏳ Chờ tài xế xác nhận hạ cont...</span>
                       </div>
                     )}
                   </Timeline.Item>

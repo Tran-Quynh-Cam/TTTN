@@ -532,12 +532,8 @@ app.put('/api/orders/:id', authenticateToken, authorizeRoles('admin', 'nhanvien'
         return res.status(403).json({ message: 'Bạn không có quyền cập nhật đơn hàng này' });
       }
 
-      // Driver can only update status
-      await client.query(`
-        UPDATE orders
-        SET trang_thai=$1
-        WHERE id = $2
-      `, [trangThai, orderId]);
+      // Driver can update status
+      await client.query(`UPDATE orders SET trang_thai=$1 WHERE id=$2`, [trangThai, orderId]);
 
       // Log history
       let changes = `Tài xế cập nhật trạng thái từ '${currentOrder.trang_thai}' sang '${trangThai}'.`;
@@ -549,6 +545,10 @@ app.put('/api/orders/:id', authenticateToken, authorizeRoles('admin', 'nhanvien'
       ]);
 
       await client.query('COMMIT');
+
+      io.emit('order_progress_updated', { orderId: Number(orderId), progress: body.progress, trangThai: trangThai || currentOrder.trang_thai });
+      io.emit('order_updated', { id: Number(orderId), progress: body.progress, trangThai: trangThai || currentOrder.trang_thai });
+
       return res.json({ message: 'Cập nhật trạng thái đơn hàng thành công!' });
     }
 
@@ -661,6 +661,10 @@ app.put('/api/orders/:id', authenticateToken, authorizeRoles('admin', 'nhanvien'
     ]);
 
     await client.query('COMMIT');
+
+    io.emit('order_progress_updated', { orderId: Number(orderId), progress: body.progress, trangThai: resolvedTrangThai });
+    io.emit('order_updated', { id: Number(orderId), progress: body.progress, trangThai: resolvedTrangThai });
+
     res.json({ message: 'Cập nhật đơn hàng thành công!' });
   } catch (err) {
     await client.query('ROLLBACK');

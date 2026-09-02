@@ -6,7 +6,7 @@ import {
   PlayCircleOutlined, CheckOutlined, LoadingOutlined, PhoneOutlined, MailOutlined,
   UploadOutlined, FileImageOutlined, FileTextOutlined, EyeOutlined, PlusOutlined, PaperClipOutlined
 } from '@ant-design/icons';
-import API from '../services/api';
+import API, { socket } from '../services/api';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
@@ -321,36 +321,32 @@ export default function DriverPortal() {
     parsed[order.id] = currentProgress;
     localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(parsed));
 
-    // Đồng bộ với Dispatch milestones
-    try {
-      const milestoneMapKey = stepKey === 'step1' ? 'lay' : (stepKey === 'step2' ? 'giao' : 'tra');
-      const savedM = localStorage.getItem(`vm_gps_milestones_${order.id}`);
-      const m = savedM ? JSON.parse(savedM) : { lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } };
-      m[milestoneMapKey] = {
-        ...(m[milestoneMapKey] || {}),
-        driverTime: val ? nowStr : null
-      };
-      localStorage.setItem(`vm_gps_milestones_${order.id}`, JSON.stringify(m));
-    } catch (e) {}
+    // Đồng bộ với Server Database & Socket realtime
+    const targetStatus = (stepKey === 'step3' && val === true) 
+      ? 'hoan_thanh' 
+      : ((stepKey === 'step3' && val === false) ? 'dang_thuc_hien' : (order.trang_thai || order.trangThai || 'dang_thuc_hien'));
 
-    // Nếu bước cuối cùng hoàn thành, chuyển trạng thái đơn hàng thành hoàn thành
+    try {
+      await API.updateOrder(order.id, { 
+        ...order, 
+        progress: currentProgress, 
+        trangThai: targetStatus 
+      });
+      if (socket) {
+        socket.emit('driver_confirm_station', { 
+          orderId: order.id, 
+          progress: currentProgress, 
+          trangThai: targetStatus 
+        });
+      }
+    } catch (err) {
+      console.error('Lỗi gửi cập nhật tiến độ trạm lên Server:', err);
+    }
+
     if (stepKey === 'step3' && val === true) {
-      try {
-        await API.updateOrder(order.id, { ...order, trangThai: 'hoan_thanh' });
-        message.success('Tuyệt vời! Bạn đã hoàn thành toàn bộ hành trình đơn hàng.');
-      } catch (err) {
-        console.error(err);
-        message.error('Lỗi khi cập nhật trạng thái hoàn thành đơn hàng');
-      }
+      message.success('Tuyệt vời! Bạn đã hoàn thành toàn bộ hành trình đơn hàng.');
     } else if (stepKey === 'step3' && val === false) {
-      // Nếu hủy bước 3, cập nhật lại trạng thái đơn hàng thành đang thực hiện
-      try {
-        await API.updateOrder(order.id, { ...order, trangThai: 'dang_thuc_hien' });
-        message.success('Đã hủy hoàn thành trạm. Trạng thái chuyển về Đang thực hiện.');
-      } catch (err) {
-        console.error(err);
-        message.error('Lỗi khi cập nhật trạng thái đơn hàng');
-      }
+      message.success('Đã hủy hoàn thành trạm. Trạng thái chuyển về Đang thực hiện.');
     } else {
       message.success(`Đã ghi nhận tài xế xác nhận trạm lúc ${nowStr}!`);
     }
