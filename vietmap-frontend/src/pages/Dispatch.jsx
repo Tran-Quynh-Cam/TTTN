@@ -282,29 +282,40 @@ export default function Dispatch() {
   // Load saved milestones when opening tracking modal or selecting a new order
   useEffect(() => {
     if (activeMapOrder && trackingModalOpen) {
-      let prog = {};
-      if (activeMapOrder.progress) {
-        try {
-          prog = typeof activeMapOrder.progress === 'string' ? JSON.parse(activeMapOrder.progress) : activeMapOrder.progress;
-        } catch (e) {}
-      }
-      if (!prog.step1 && !prog.step2 && !prog.step3) {
-        try {
-          const savedProgress = localStorage.getItem('fleetos_order_progress_v1');
-          const parsed = savedProgress ? JSON.parse(savedProgress) : {};
-          if (parsed[activeMapOrder.id]) prog = parsed[activeMapOrder.id];
-        } catch (e) {}
-      }
+      let driverProg = {};
+      try {
+        const savedProgress = localStorage.getItem('fleetos_order_progress_v1');
+        const parsed = savedProgress ? JSON.parse(savedProgress) : {};
+        if (parsed[activeMapOrder.id]) driverProg = parsed[activeMapOrder.id];
+      } catch (e) {}
+
+      let gpsSaved = {};
+      try {
+        const savedGps = localStorage.getItem(`vm_gps_milestones_${activeMapOrder.id}`);
+        if (savedGps) gpsSaved = JSON.parse(savedGps);
+      } catch (e) {}
 
       setMilestones({
-        lay: { reached: !!prog.step1, time: prog.step1_time, driverTime: prog.step1_time },
-        giao: { reached: !!prog.step2, time: prog.step2_time, driverTime: prog.step2_time },
-        tra: { reached: !!prog.step3, time: prog.step3_time, driverTime: prog.step3_time }
+        lay: { 
+          reached: !!gpsSaved.lay?.reached, 
+          time: gpsSaved.lay?.time || null, 
+          driverTime: (driverProg.step1 ? driverProg.step1_time : null) || gpsSaved.lay?.driverTime || null 
+        },
+        giao: { 
+          reached: !!gpsSaved.giao?.reached, 
+          time: gpsSaved.giao?.time || null, 
+          driverTime: (driverProg.step2 ? driverProg.step2_time : null) || gpsSaved.giao?.driverTime || null 
+        },
+        tra: { 
+          reached: !!gpsSaved.tra?.reached, 
+          time: gpsSaved.tra?.time || null, 
+          driverTime: (driverProg.step3 ? driverProg.step3_time : null) || gpsSaved.tra?.driverTime || null 
+        }
       });
       setSimStep(0);
       setIsSimulating(false);
     }
-  }, [activeMapOrder?.id, activeMapOrder?.progress, trackingModalOpen]);
+  }, [activeMapOrder?.id, trackingModalOpen]);
 
   // Simulation timer loop
   useEffect(() => {
@@ -857,8 +868,8 @@ export default function Dispatch() {
                 <Timeline style={{ marginTop: 10 }}>
                   {/* Point 1: Pickup */}
                   <Timeline.Item
-                    color={(milestones.lay?.reached || milestones.lay?.driverTime) ? "green" : "gray"}
-                    dot={(milestones.lay?.reached || milestones.lay?.driverTime) ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />}
+                    color={milestones.lay?.driverTime ? "green" : (milestones.lay?.reached ? "blue" : "gray")}
+                    dot={milestones.lay?.driverTime ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : (milestones.lay?.reached ? <ClockCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />)}
                   >
                     <div style={{ fontWeight: 700, color: (milestones.lay?.reached || milestones.lay?.driverTime) ? '#262626' : '#595959', fontSize: 13 }}>
                       1. Nơi Lấy Hàng / Vỏ
@@ -866,24 +877,20 @@ export default function Dispatch() {
                     <div style={{ color: '#ff4d4f', fontWeight: 600, fontSize: 13, margin: '2px 0 4px 0' }}>
                       {activeMapOrder.diem_lay_hang || activeMapOrder.diemLayHang || 'ICD Phước Long'}
                     </div>
-                    {(milestones.lay?.reached || milestones.lay?.driverTime) ? (
-                      <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Tài xế đã xác nhận trạm</strong></div>
-                        <div style={{ color: '#595959', marginTop: 4 }}>
-                          👤 Thời gian TX bấm: <b style={{ color: '#1677ff' }}>{milestones.lay?.driverTime || milestones.lay?.time || '—'}</b>
-                        </div>
+                    <div style={{ background: (milestones.lay?.reached || milestones.lay?.driverTime) ? '#f6ffed' : '#fafafa', border: `1px solid ${(milestones.lay?.reached || milestones.lay?.driverTime) ? '#b7eb8f' : '#f0f0f0'}`, padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
+                      <div style={{ color: milestones.lay?.reached ? '#389e0d' : '#8c8c8c' }}>
+                        ⏰ Thời gian xe đến (GPS): <b>{milestones.lay?.time || '⏳ Chưa đến điểm (GPS)'}</b>
                       </div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-                        <span>⏳ Chờ tài xế xác nhận tại cổng...</span>
+                      <div style={{ color: milestones.lay?.driverTime ? '#1677ff' : '#8c8c8c', marginTop: 3 }}>
+                        👤 Tài xế xác nhận: <b>{milestones.lay?.driverTime ? milestones.lay.driverTime : '⏳ Chưa bấm xác nhận'}</b>
                       </div>
-                    )}
+                    </div>
                   </Timeline.Item>
 
                   {/* Point 2: Delivery */}
                   <Timeline.Item
-                    color={(milestones.giao?.reached || milestones.giao?.driverTime) ? "green" : (simStep > 0 ? "blue" : "gray")}
-                    dot={(milestones.giao?.reached || milestones.giao?.driverTime) ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: simStep > 0 ? '#1677ff' : '#bfbfbf', fontSize: 16 }} />}
+                    color={milestones.giao?.driverTime ? "green" : (milestones.giao?.reached ? "blue" : "gray")}
+                    dot={milestones.giao?.driverTime ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : (milestones.giao?.reached ? <ClockCircleOutlined style={{ color: simStep > 0 ? '#1677ff' : '#bfbfbf', fontSize: 16 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />)}
                   >
                     <div style={{ fontWeight: 700, color: (milestones.giao?.reached || milestones.giao?.driverTime) ? '#262626' : '#595959', fontSize: 13 }}>
                       2. Nơi Giao Hàng
@@ -891,24 +898,20 @@ export default function Dispatch() {
                     <div style={{ color: '#fa8c16', fontWeight: 600, fontSize: 13, margin: '2px 0 4px 0' }}>
                       {activeMapOrder.diem_giao_hang || activeMapOrder.diemGiaoHang || 'KCN Long Hậu'}
                     </div>
-                    {(milestones.giao?.reached || milestones.giao?.driverTime) ? (
-                      <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Tài xế đã xác nhận trạm</strong></div>
-                        <div style={{ color: '#595959', marginTop: 4 }}>
-                          👤 Thời gian TX bấm: <b style={{ color: '#1677ff' }}>{milestones.giao?.driverTime || milestones.giao?.time || '—'}</b>
-                        </div>
+                    <div style={{ background: (milestones.giao?.reached || milestones.giao?.driverTime) ? '#f6ffed' : '#fafafa', border: `1px solid ${(milestones.giao?.reached || milestones.giao?.driverTime) ? '#b7eb8f' : '#f0f0f0'}`, padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
+                      <div style={{ color: milestones.giao?.reached ? '#389e0d' : '#8c8c8c' }}>
+                        ⏰ Thời gian xe đến (GPS): <b>{milestones.giao?.time || '⏳ Chưa đến điểm (GPS)'}</b>
                       </div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-                        <span>⏳ Chờ tài xế xác nhận giao hàng...</span>
+                      <div style={{ color: milestones.giao?.driverTime ? '#1677ff' : '#8c8c8c', marginTop: 3 }}>
+                        👤 Tài xế xác nhận: <b>{milestones.giao?.driverTime ? milestones.giao.driverTime : '⏳ Chưa bấm xác nhận'}</b>
                       </div>
-                    )}
+                    </div>
                   </Timeline.Item>
 
                   {/* Point 3: Return Empty */}
                   <Timeline.Item
-                    color={(milestones.tra?.reached || milestones.tra?.driverTime) ? "green" : "gray"}
-                    dot={(milestones.tra?.reached || milestones.tra?.driverTime) ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />}
+                    color={milestones.tra?.driverTime ? "green" : (milestones.tra?.reached ? "blue" : "gray")}
+                    dot={milestones.tra?.driverTime ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : (milestones.tra?.reached ? <ClockCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />)}
                   >
                     <div style={{ fontWeight: 700, color: (milestones.tra?.reached || milestones.tra?.driverTime) ? '#262626' : '#595959', fontSize: 13 }}>
                       3. Nơi Hạ Cont / Trả Rỗng
@@ -916,18 +919,14 @@ export default function Dispatch() {
                     <div style={{ color: '#52c41a', fontWeight: 600, fontSize: 13, margin: '2px 0 4px 0' }}>
                       {activeMapOrder.diem_tra_rong || activeMapOrder.diemTraRong || 'Depot Cát Lái'}
                     </div>
-                    {(milestones.tra?.reached || milestones.tra?.driverTime) ? (
-                      <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Hoàn thành hạ cont / trả rỗng</strong></div>
-                        <div style={{ color: '#595959', marginTop: 4 }}>
-                          👤 Thời gian TX bấm: <b style={{ color: '#1677ff' }}>{milestones.tra?.driverTime || milestones.tra?.time || '—'}</b>
-                        </div>
+                    <div style={{ background: (milestones.tra?.reached || milestones.tra?.driverTime) ? '#f6ffed' : '#fafafa', border: `1px solid ${(milestones.tra?.reached || milestones.tra?.driverTime) ? '#b7eb8f' : '#f0f0f0'}`, padding: '6px 10px', borderRadius: 6, fontSize: 12 }}>
+                      <div style={{ color: milestones.tra?.reached ? '#389e0d' : '#8c8c8c' }}>
+                        ⏰ Thời gian xe đến (GPS): <b>{milestones.tra?.time || '⏳ Chưa đến điểm (GPS)'}</b>
                       </div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-                        <span>⏳ Chờ tài xế xác nhận hạ cont...</span>
+                      <div style={{ color: milestones.tra?.driverTime ? '#1677ff' : '#8c8c8c', marginTop: 3 }}>
+                        👤 Tài xế xác nhận: <b>{milestones.tra?.driverTime ? milestones.tra.driverTime : '⏳ Chưa bấm xác nhận'}</b>
                       </div>
-                    )}
+                    </div>
                   </Timeline.Item>
                 </Timeline>
               </>
