@@ -315,9 +315,23 @@ export default function DriverPortal() {
       return;
     }
 
+    const nowStr = dayjs().format('HH:mm:ss DD/MM/YYYY');
     currentProgress[stepKey] = val;
+    currentProgress[`${stepKey}_time`] = val ? nowStr : null;
     parsed[order.id] = currentProgress;
     localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(parsed));
+
+    // Đồng bộ với Dispatch milestones
+    try {
+      const milestoneMapKey = stepKey === 'step1' ? 'lay' : (stepKey === 'step2' ? 'giao' : 'tra');
+      const savedM = localStorage.getItem(`vm_gps_milestones_${order.id}`);
+      const m = savedM ? JSON.parse(savedM) : { lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } };
+      m[milestoneMapKey] = {
+        ...(m[milestoneMapKey] || {}),
+        driverTime: val ? nowStr : null
+      };
+      localStorage.setItem(`vm_gps_milestones_${order.id}`, JSON.stringify(m));
+    } catch (e) {}
 
     // Nếu bước cuối cùng hoàn thành, chuyển trạng thái đơn hàng thành hoàn thành
     if (stepKey === 'step3' && val === true) {
@@ -338,7 +352,7 @@ export default function DriverPortal() {
         message.error('Lỗi khi cập nhật trạng thái đơn hàng');
       }
     } else {
-      message.success('Đã ghi nhận mốc hành trình!');
+      message.success(`Đã ghi nhận tài xế xác nhận trạm lúc ${nowStr}!`);
     }
     fetchDriverOrders();
   };
@@ -653,6 +667,7 @@ export default function DriverPortal() {
                           <div style={{ flex: 1, marginRight: 8 }}>
                             <div style={{ fontSize: 11, color: '#8c8c8c' }}>TRẠM 1: LẤY VỎ/HÀNG</div>
                             <div style={{ fontWeight: 600, color: '#262626' }}>{selectedOrder.diemLayHang}</div>
+                            {prog.step1_time && <div style={{ fontSize: 11, color: '#52c41a', marginTop: 2 }}>⏰ Đã xác nhận: <b>{prog.step1_time}</b></div>}
                           </div>
                           <Button 
                             type={prog.step1 ? 'primary' : 'default'}
@@ -681,6 +696,7 @@ export default function DriverPortal() {
                           <div style={{ flex: 1, marginRight: 8 }}>
                             <div style={{ fontSize: 11, color: '#8c8c8c' }}>TRẠM 2: GIAO VỎ/HÀNG</div>
                             <div style={{ fontWeight: 600, color: '#262626' }}>{selectedOrder.diemGiaoHang}</div>
+                            {prog.step2_time && <div style={{ fontSize: 11, color: '#52c41a', marginTop: 2 }}>⏰ Đã xác nhận: <b>{prog.step2_time}</b></div>}
                           </div>
                           <Button 
                             type={prog.step2 ? 'primary' : 'default'}
@@ -710,6 +726,7 @@ export default function DriverPortal() {
                           <div style={{ flex: 1, marginRight: 8 }}>
                             <div style={{ fontSize: 11, color: '#8c8c8c' }}>TRẠM 3: HẠ HÀNG/VỎ</div>
                             <div style={{ fontWeight: 600, color: '#262626' }}>{selectedOrder.diemTraRong || selectedOrder.diemNhanRong || 'Cảng hạ'}</div>
+                            {prog.step3_time && <div style={{ fontSize: 11, color: '#52c41a', marginTop: 2 }}>⏰ Đã xác nhận: <b>{prog.step3_time}</b></div>}
                           </div>
                           <Button 
                             type={prog.step3 ? 'primary' : 'default'}

@@ -217,11 +217,54 @@ export default function Dispatch() {
   const [simSpeed, setSimSpeed] = useState(1);
   const [mapType, setMapType] = useState('roadmap'); // 'roadmap' | 'satellite'
   const [milestones, setMilestones] = useState({
-    lay: { reached: false, time: null },
-    giao: { reached: false, time: null },
-    tra: { reached: false, time: null }
+    lay: { reached: false, time: null, driverTime: null },
+    giao: { reached: false, time: null, driverTime: null },
+    tra: { reached: false, time: null, driverTime: null }
   });
 
+  const handleDriverConfirm = async (type) => {
+    if (!activeMapOrder) return;
+    const nowStr = dayjs().format('HH:mm:ss DD/MM/YYYY');
+    setMilestones(prev => {
+      const next = {
+        ...prev,
+        [type]: {
+          ...(prev[type] || {}),
+          driverTime: nowStr
+        }
+      };
+      localStorage.setItem(`vm_gps_milestones_${activeMapOrder.id}`, JSON.stringify(next));
+      return next;
+    });
+
+    // Sync progress storage for DriverPortal
+    try {
+      const savedProgress = localStorage.getItem('fleetos_order_progress_v1');
+      const parsed = savedProgress ? JSON.parse(savedProgress) : {};
+      const currentProgress = parsed[activeMapOrder.id] || { step1: false, step2: false, step3: false };
+      const stepKey = type === 'lay' ? 'step1' : (type === 'giao' ? 'step2' : 'step3');
+      currentProgress[stepKey] = true;
+      currentProgress[`${stepKey}_time`] = nowStr;
+      parsed[activeMapOrder.id] = currentProgress;
+      localStorage.setItem('fleetos_order_progress_v1', JSON.stringify(parsed));
+    } catch (e) {}
+
+    // Tự động chuyển trạng thái đơn hàng sang Hoàn thành khi tài xế xác nhận trạm 3 (Trả Rỗng)
+    if (type === 'tra') {
+      try {
+        await API.updateOrder(activeMapOrder.id, {
+          ...activeMapOrder,
+          soBienNhan: activeMapOrder.so_bien_nhan || activeMapOrder.soBienNhan,
+          trangThai: 'hoan_thanh'
+        });
+        fetchData();
+      } catch (e) {
+        console.error('Lỗi tự động cập nhật hoàn thành đơn:', e);
+      }
+    }
+
+    message.success(`👤 Tài xế đã bấm xác nhận trạm lúc ${nowStr}`);
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -257,17 +300,15 @@ export default function Dispatch() {
         try {
           setMilestones(JSON.parse(saved));
         } catch (e) {
-          setMilestones({ lay: { reached: false, time: null }, giao: { reached: false, time: null }, tra: { reached: false, time: null } });
+          setMilestones({ lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } });
         }
       } else {
-        setMilestones({ lay: { reached: false, time: null }, giao: { reached: false, time: null }, tra: { reached: false, time: null } });
+        setMilestones({ lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } });
       }
       setSimStep(0);
       setIsSimulating(false);
     }
   }, [activeMapOrder?.id, trackingModalOpen]);
-
-
 
   // Simulation timer loop
   useEffect(() => {
@@ -301,18 +342,18 @@ export default function Dispatch() {
             let updated = false;
 
             if (!nextM.lay?.reached) {
-              nextM.lay = { reached: true, time: nowStr };
+              nextM.lay = { ...(nextM.lay || {}), reached: true, time: nowStr };
               updated = true;
             }
 
             if (nextStep >= 50 && !nextM.giao?.reached) {
-              nextM.giao = { reached: true, time: nowStr };
+              nextM.giao = { ...(nextM.giao || {}), reached: true, time: nowStr };
               updated = true;
               message.success(`🎯 Định vị GPS: Xe đã đi qua Điểm Giao Hàng (${giao}) lúc ${nowStr}`);
             }
 
             if (nextStep >= 100 && !nextM.tra?.reached) {
-              nextM.tra = { reached: true, time: nowStr };
+              nextM.tra = { ...(nextM.tra || {}), reached: true, time: nowStr };
               updated = true;
               message.success(`🏁 Định vị GPS: Xe đã đến Điểm Trả Rỗng (${tra}) lúc ${nowStr}`);
             }
@@ -820,69 +861,148 @@ export default function Dispatch() {
                 <Timeline style={{ marginTop: 10 }}>
                   {/* Point 1: Pickup */}
                   <Timeline.Item
-                    color={milestones.lay?.reached ? "green" : "gray"}
-                    dot={milestones.lay?.reached ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />}
+                    color={(milestones.lay?.reached || milestones.lay?.driverTime) ? "green" : "gray"}
+                    dot={(milestones.lay?.reached || milestones.lay?.driverTime) ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />}
                   >
-                    <div style={{ fontWeight: 700, color: milestones.lay?.reached ? '#262626' : '#595959', fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, color: (milestones.lay?.reached || milestones.lay?.driverTime) ? '#262626' : '#595959', fontSize: 13 }}>
                       1. Nơi Lấy Hàng / Vỏ
                     </div>
                     <div style={{ color: '#ff4d4f', fontWeight: 600, fontSize: 13, margin: '2px 0 4px 0' }}>
                       {activeMapOrder.diem_lay_hang || activeMapOrder.diemLayHang || 'ICD Phước Long'}
                     </div>
-                    {milestones.lay?.reached ? (
+                    {(milestones.lay?.reached || milestones.lay?.driverTime) ? (
                       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        <CheckOutlined style={{ marginRight: 4 }} /> <strong>Đã qua điểm (GPS)</strong>
-                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.lay.time}</b></div>
-                        <div style={{ color: '#595959', marginTop: 2 }}>👤 Thời gian tài xế bấm: <b>{milestones.lay.driverTime || milestones.lay.time || '—'}</b></div>
+                        {milestones.lay?.reached ? (
+                          <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Đã qua điểm (GPS)</strong></div>
+                        ) : (
+                          <div style={{ color: '#fa8c16' }}><ClockCircleOutlined style={{ marginRight: 4 }} /> <strong>Chờ xe đến (GPS)</strong></div>
+                        )}
+                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.lay?.time || '⏳ Chưa đến điểm (GPS)'}</b></div>
+                        <div style={{ color: '#595959', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                          <span>👤 Thời gian tài xế bấm: <b style={{ color: milestones.lay?.driverTime ? '#1677ff' : '#8c8c8c' }}>{milestones.lay?.driverTime || '—'}</b></span>
+                          {!milestones.lay?.driverTime && (
+                            <Button
+                              size="small"
+                              type="primary"
+                              ghost
+                              style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                              onClick={() => handleDriverConfirm('lay')}
+                            >
+                              👆 TX bấm (Demo)
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>⏳ Chưa qua (Bật GPS để giả lập...)</div>
+                      <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>⏳ Chưa qua (Bật GPS để giả lập...)</span>
+                        <Button
+                          size="small"
+                          type="default"
+                          style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                          onClick={() => handleDriverConfirm('lay')}
+                        >
+                          👆 TX bấm (Demo)
+                        </Button>
+                      </div>
                     )}
                   </Timeline.Item>
 
                   {/* Point 2: Delivery */}
                   <Timeline.Item
-                    color={milestones.giao?.reached ? "green" : (simStep > 0 ? "blue" : "gray")}
-                    dot={milestones.giao?.reached ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: simStep > 0 ? '#1677ff' : '#bfbfbf', fontSize: 16 }} />}
+                    color={(milestones.giao?.reached || milestones.giao?.driverTime) ? "green" : (simStep > 0 ? "blue" : "gray")}
+                    dot={(milestones.giao?.reached || milestones.giao?.driverTime) ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: simStep > 0 ? '#1677ff' : '#bfbfbf', fontSize: 16 }} />}
                   >
-                    <div style={{ fontWeight: 700, color: milestones.giao?.reached ? '#262626' : '#595959', fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, color: (milestones.giao?.reached || milestones.giao?.driverTime) ? '#262626' : '#595959', fontSize: 13 }}>
                       2. Nơi Giao Hàng
                     </div>
                     <div style={{ color: '#fa8c16', fontWeight: 600, fontSize: 13, margin: '2px 0 4px 0' }}>
                       {activeMapOrder.diem_giao_hang || activeMapOrder.diemGiaoHang || 'KCN Long Hậu'}
                     </div>
-                    {milestones.giao?.reached ? (
+                    {(milestones.giao?.reached || milestones.giao?.driverTime) ? (
                       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        <CheckOutlined style={{ marginRight: 4 }} /> <strong>Đã qua điểm (GPS)</strong>
-                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.giao.time}</b></div>
-                        <div style={{ color: '#595959', marginTop: 2 }}>👤 Thời gian tài xế bấm: <b>{milestones.giao.driverTime || milestones.giao.time || '—'}</b></div>
+                        {milestones.giao?.reached ? (
+                          <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Đã qua điểm (GPS)</strong></div>
+                        ) : (
+                          <div style={{ color: '#fa8c16' }}><ClockCircleOutlined style={{ marginRight: 4 }} /> <strong>Chờ xe đến (GPS)</strong></div>
+                        )}
+                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.giao?.time || '⏳ Chưa đến điểm (GPS)'}</b></div>
+                        <div style={{ color: '#595959', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                          <span>👤 Thời gian tài xế bấm: <b style={{ color: milestones.giao?.driverTime ? '#1677ff' : '#8c8c8c' }}>{milestones.giao?.driverTime || '—'}</b></span>
+                          {!milestones.giao?.driverTime && (
+                            <Button
+                              size="small"
+                              type="primary"
+                              ghost
+                              style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                              onClick={() => handleDriverConfirm('giao')}
+                            >
+                              👆 TX bấm (Demo)
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-                        {simStep > 0 ? '🚚 Xe đang di chuyển đến...' : '⏳ Chờ định vị GPS...'}
+                      <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{simStep > 0 ? '🚚 Xe đang di chuyển đến...' : '⏳ Chờ định vị GPS...'}</span>
+                        <Button
+                          size="small"
+                          type="default"
+                          style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                          onClick={() => handleDriverConfirm('giao')}
+                        >
+                          👆 TX bấm (Demo)
+                        </Button>
                       </div>
                     )}
                   </Timeline.Item>
 
                   {/* Point 3: Return Empty */}
                   <Timeline.Item
-                    color={milestones.tra?.reached ? "green" : "gray"}
-                    dot={milestones.tra?.reached ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />}
+                    color={(milestones.tra?.reached || milestones.tra?.driverTime) ? "green" : "gray"}
+                    dot={(milestones.tra?.reached || milestones.tra?.driverTime) ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /> : <ClockCircleOutlined style={{ color: '#bfbfbf', fontSize: 16 }} />}
                   >
-                    <div style={{ fontWeight: 700, color: milestones.tra?.reached ? '#262626' : '#595959', fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, color: (milestones.tra?.reached || milestones.tra?.driverTime) ? '#262626' : '#595959', fontSize: 13 }}>
                       3. Nơi Hạ Cont / Trả Rỗng
                     </div>
                     <div style={{ color: '#52c41a', fontWeight: 600, fontSize: 13, margin: '2px 0 4px 0' }}>
                       {activeMapOrder.diem_tra_rong || activeMapOrder.diemTraRong || 'Depot Cát Lái'}
                     </div>
-                    {milestones.tra?.reached ? (
+                    {(milestones.tra?.reached || milestones.tra?.driverTime) ? (
                       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '6px 10px', borderRadius: 6, fontSize: 12, color: '#389e0d' }}>
-                        <CheckOutlined style={{ marginRight: 4 }} /> <strong>Hoàn thành hạ cont (GPS)</strong>
-                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.tra.time}</b></div>
-                        <div style={{ color: '#595959', marginTop: 2 }}>👤 Thời gian tài xế bấm: <b>{milestones.tra.driverTime || milestones.tra.time || '—'}</b></div>
+                        {milestones.tra?.reached ? (
+                          <div><CheckOutlined style={{ marginRight: 4 }} /> <strong>Hoàn thành hạ cont (GPS)</strong></div>
+                        ) : (
+                          <div style={{ color: '#fa8c16' }}><ClockCircleOutlined style={{ marginRight: 4 }} /> <strong>Chờ xe đến (GPS)</strong></div>
+                        )}
+                        <div style={{ color: '#595959', marginTop: 2 }}>⏰ Thời gian xe đến: <b>{milestones.tra?.time || '⏳ Chưa đến điểm (GPS)'}</b></div>
+                        <div style={{ color: '#595959', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                          <span>👤 Thời gian tài xế bấm: <b style={{ color: milestones.tra?.driverTime ? '#1677ff' : '#8c8c8c' }}>{milestones.tra?.driverTime || '—'}</b></span>
+                          {!milestones.tra?.driverTime && (
+                            <Button
+                              size="small"
+                              type="primary"
+                              ghost
+                              style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                              onClick={() => handleDriverConfirm('tra')}
+                            >
+                              👆 TX bấm (Demo)
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8c8c8c' }}>⏳ Chưa hoàn thành</div>
+                      <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>⏳ Chưa hoàn thành</span>
+                        <Button
+                          size="small"
+                          type="default"
+                          style={{ fontSize: 11, height: 22, padding: '0 6px' }}
+                          onClick={() => handleDriverConfirm('tra')}
+                        >
+                          👆 TX bấm (Demo)
+                        </Button>
+                      </div>
                     )}
                   </Timeline.Item>
                 </Timeline>
@@ -920,7 +1040,7 @@ export default function Dispatch() {
                       if (simStep >= 100) setSimStep(0);
                       setIsSimulating(true);
 
-                      if (activeMapOrder && (activeMapOrder.trang_thai === 'chua_hoan_thanh' || activeMapOrder.trangThai === 'chua_hoan_thanh')) {
+                      if (activeMapOrder && (activeMapOrder.trang_thai === 'chua_hoan_thanh' || activeMapOrder.trangThai === 'chua_hoan_thanh' || activeMapOrder.trang_thai === 'chua_bat_dau' || activeMapOrder.trangThai === 'chua_bat_dau')) {
                         try {
                           await API.updateOrder(activeMapOrder.id, {
                             ...activeMapOrder,
@@ -948,7 +1068,7 @@ export default function Dispatch() {
                   onClick={() => {
                     setIsSimulating(false);
                     setSimStep(0);
-                    const resetM = { lay: { reached: false, time: null }, giao: { reached: false, time: null }, tra: { reached: false, time: null } };
+                    const resetM = { lay: { reached: false, time: null, driverTime: null }, giao: { reached: false, time: null, driverTime: null }, tra: { reached: false, time: null, driverTime: null } };
                     setMilestones(resetM);
                     if (activeMapOrder?.id) {
                       localStorage.removeItem(`vm_gps_milestones_${activeMapOrder.id}`);
