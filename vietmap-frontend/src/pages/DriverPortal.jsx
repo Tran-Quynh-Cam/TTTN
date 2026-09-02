@@ -321,7 +321,17 @@ export default function DriverPortal() {
     parsed[order.id] = currentProgress;
     localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(parsed));
 
-    // Đồng bộ với Server Database & Socket realtime
+    // Đồng bộ vm_gps_milestones_${order.id} vào localStorage cho Dispatch
+    const milestoneMapKey = stepKey === 'step1' ? 'lay' : (stepKey === 'step2' ? 'giao' : 'tra');
+    try {
+      const savedM = localStorage.getItem(`vm_gps_milestones_${order.id}`);
+      const m = savedM ? JSON.parse(savedM) : { lay: {}, giao: {}, tra: {} };
+      m[milestoneMapKey] = {
+        ...(m[milestoneMapKey] || {}),
+        driverTime: val ? nowStr : null
+      };
+      localStorage.setItem(`vm_gps_milestones_${order.id}`, JSON.stringify(m));
+    } catch (e) {}
     const targetStatus = (stepKey === 'step3' && val === true) 
       ? 'hoan_thanh' 
       : ((stepKey === 'step3' && val === false) ? 'dang_thuc_hien' : (order.trang_thai || order.trangThai || 'dang_thuc_hien'));

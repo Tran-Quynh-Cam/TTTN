@@ -253,31 +253,53 @@ export default function Dispatch() {
     const handleRealtimeUpdate = (data) => {
       console.log('📡 Realtime station update received:', data);
       fetchData();
-      if (data?.orderId && activeMapOrder && (data.orderId === activeMapOrder.id || data.id === activeMapOrder.id)) {
-        if (data.progress) {
-          let prog = typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress;
-          setMilestones({
-            lay: { reached: !!prog.step1, time: prog.step1_time, driverTime: prog.step1_time },
-            giao: { reached: !!prog.step2, time: prog.step2_time, driverTime: prog.step2_time },
-            tra: { reached: !!prog.step3, time: prog.step3_time, driverTime: prog.step3_time }
-          });
+      if (data && activeMapOrder && Number(data.orderId || data.id) === Number(activeMapOrder.id)) {
+        let prog = data.progress;
+        if (typeof prog === 'string') {
+          try { prog = JSON.parse(prog); } catch (e) {}
+        }
+        if (prog) {
+          setMilestones(prev => ({
+            lay: { ...prev.lay, driverTime: prog.step1 ? (prog.step1_time || dayjs().format('HH:mm:ss DD/MM/YYYY')) : null },
+            giao: { ...prev.giao, driverTime: prog.step2 ? (prog.step2_time || dayjs().format('HH:mm:ss DD/MM/YYYY')) : null },
+            tra: { ...prev.tra, driverTime: prog.step3 ? (prog.step3_time || dayjs().format('HH:mm:ss DD/MM/YYYY')) : null }
+          }));
         }
       }
       message.info({ content: '⚡ Đã nhận cập nhật tiến độ trạm mới từ tài xế!', key: 'rt_station_msg' });
     };
 
+    const handleStorageChange = () => {
+      if (activeMapOrder && trackingModalOpen) {
+        try {
+          const savedProgress = localStorage.getItem('fleetos_order_progress_v1');
+          const parsed = savedProgress ? JSON.parse(savedProgress) : {};
+          const driverProg = parsed[activeMapOrder.id] || {};
+          setMilestones(prev => ({
+            lay: { ...prev.lay, driverTime: driverProg.step1 ? driverProg.step1_time : null },
+            giao: { ...prev.giao, driverTime: driverProg.step2 ? driverProg.step2_time : null },
+            tra: { ...prev.tra, driverTime: driverProg.step3 ? driverProg.step3_time : null }
+          }));
+        } catch (e) {}
+      }
+    };
+
     if (socket) {
       socket.on('order_progress_updated', handleRealtimeUpdate);
+      socket.on('driver_confirm_station', handleRealtimeUpdate);
       socket.on('order_updated', handleRealtimeUpdate);
     }
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       if (socket) {
         socket.off('order_progress_updated', handleRealtimeUpdate);
+        socket.off('driver_confirm_station', handleRealtimeUpdate);
         socket.off('order_updated', handleRealtimeUpdate);
       }
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, [activeMapOrder?.id]);
+  }, [activeMapOrder?.id, trackingModalOpen]);
 
   // Load saved milestones when opening tracking modal or selecting a new order
   useEffect(() => {
