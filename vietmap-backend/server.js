@@ -1,10 +1,14 @@
+const dns = require('dns');
+// Ép Node.js ưu tiên IPv4 toàn cục (quan trọng khi chạy trên Render/Railway)
+dns.setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer'); // giữ lại để dùng khi cần SMTP local
 const db = require('./db');
 require('dotenv').config();
 
@@ -782,22 +786,32 @@ app.post('/api/orders/:id/send-email', authenticateToken, async (req, res) => {
 
     const toEmail = order.email_tai_xe || order.driver_email || 'Tqcam1808@gmail.com';
 
-    const smtpPort = Number(process.env.SMTP_PORT) || 587;
-    const isSecure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : smtpPort === 465;
-
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: smtpPort,
-      secure: isSecure,
-      family: 4, //  BẮT BUỘC TRÊN RENDER: Ép buộc dùng IPv4 để tránh lỗi ENETUNREACH IPv6
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-    });
+    // ============================================================
+    // [SMTP - ĐÃ TẮT] Render/Railway chặn outbound SMTP port 465/587.
+    // Giữ lại code bên dưới để dùng khi chạy local hoặc VPS có hỗ trợ SMTP.
+    // ============================================================
+    // const smtpPort = Number(process.env.SMTP_PORT) || 587;
+    // const isSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+    // const transporter = nodemailer.createTransport({
+    //   host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    //   port: smtpPort,
+    //   secure: isSecure,
+    //   auth: {
+    //     user: process.env.SMTP_USER,
+    //     pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
+    //   },
+    //   connectionTimeout: 15000,
+    //   greetingTimeout: 15000,
+    //   socketTimeout: 20000,
+    // });
+    // await transporter.sendMail({
+    //   from: `"FleetOS Logistics" <${process.env.SMTP_USER}>`,
+    //   to: toEmail,
+    //   subject: `[FleetOS] Lệnh vận chuyển — ${order.so_bien_nhan}`,
+    //   html: htmlContent,
+    //   attachments: attachments,
+    // });
+    // ============================================================
 
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('vi-VN') : '—';
     const fmtDateTime = (d) => d ? `${new Date(d).toLocaleDateString('vi-VN')} ${new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : '—';
@@ -890,29 +904,81 @@ app.post('/api/orders/:id/send-email', authenticateToken, async (req, res) => {
     for (const doc of incomingDocs) {
       if (doc.fileUrl && doc.fileUrl.startsWith('data:')) {
         let fileName = doc.tenFile || doc.tenChungTu || `ChungTu_${doc.id || Date.now()}`;
-        // If fileName doesn't have an extension but we can guess from the data URL
         if (!fileName.includes('.')) {
           if (doc.fileUrl.startsWith('data:application/pdf')) fileName += '.pdf';
           else if (doc.fileUrl.startsWith('data:image/jpeg')) fileName += '.jpg';
           else if (doc.fileUrl.startsWith('data:image/png')) fileName += '.png';
         }
 
+        const base64Content = doc.fileUrl.split(',')[1];
         attachments.push({
           filename: fileName,
-          path: doc.fileUrl // Nodemailer natively supports Data URIs
+          path: doc.fileUrl, // Cho Nodemailer SMTP
+          content: base64Content // Cho Resend HTTP API
         });
       }
     }
 
-    await transporter.sendMail({
-      from: `"FleetOS Logistics" <${process.env.SMTP_USER}>`,
-      to: toEmail,
-      subject: `[FleetOS] Lệnh vận chuyển — ${order.so_bien_nhan}`,
+    // ============================================================
+    // RESEND API - Gửi email qua HTTPS (hoạt động trên mọi cloud platform)
+    // Đăng ký miễn phí: https://resend.com | Free: 3000 email/tháng
+    // ============================================================
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    if (!RESEND_API_KEY) {
+      return res.status(500).json({ error: 'Chưa cấu hình RESEND_API_KEY trong biến môi trường.' });
+    }
+
+    // Khi dùng domain test resend.dev, chỉ gửi được đến email tài khoản Resend của bạn
+    const resendFrom = process.env.RESEND_FROM || 'FleetOS Logistics <onboarding@resend.dev>';
+    const isTestMode = resendFrom.includes('resend.dev');
+    const actualTo = isTestMode ? (process.env.RESEND_TEST_EMAIL || 'Tqcam1808@gmail.com') : toEmail;
+    if (isTestMode) {
+      console.log(`[SEND-EMAIL] Test mode: redirect email → ${actualTo}`);
+    }
+
+    const emailPayload = {
+      from: resendFrom,
+      to: [actualTo],
+      subject: `[FleetOS] Lệnh vận chuyển — ${order.so_bien_nhan}${isTestMode ? ' [TEST]' : ''}`,
       html: htmlContent,
-      attachments: attachments,
+      ...(attachments.length > 0 ? {
+        attachments: attachments.map(a => ({ filename: a.filename, content: a.content }))
+      } : {})
+    };
+
+    const sendResult = await new Promise((resolve, reject) => {
+      const https = require('https');
+      const body = JSON.stringify(emailPayload);
+      const options = {
+        hostname: 'api.resend.com',
+        port: 443,
+        path: '/emails',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      };
+      const req2 = https.request(options, (r) => {
+        let data = '';
+        r.on('data', chunk => { data += chunk; });
+        r.on('end', () => {
+          try { resolve({ status: r.statusCode, body: JSON.parse(data) }); }
+          catch (e) { resolve({ status: r.statusCode, body: data }); }
+        });
+      });
+      req2.on('error', reject);
+      req2.write(body);
+      req2.end();
     });
 
-    console.log(`[SEND-EMAIL] Email sent successfully for orderId=${orderId}. Updating da_gui_lenh...`);
+    if (sendResult.status >= 400) {
+      console.error('[SEND-EMAIL] Resend API error:', sendResult.body);
+      return res.status(500).json({ error: `Gửi email thất bại: ${JSON.stringify(sendResult.body)}` });
+    }
+
+    console.log(`[SEND-EMAIL] Resend API success for orderId=${orderId}. Updating da_gui_lenh...`);
 
     const upd1 = await db.query('UPDATE order_details SET da_gui_lenh = true WHERE order_id = $1', [orderId]);
     console.log(`[SEND-EMAIL] order_details updated: ${upd1.rowCount} rows`);
@@ -920,7 +986,8 @@ app.post('/api/orders/:id/send-email', authenticateToken, async (req, res) => {
     console.log(`[SEND-EMAIL] orders updated: ${upd2.rowCount} rows`);
 
     const attachInfo = attachments.length > 0 ? ` (kèm ${attachments.length} chứng từ đính kèm)` : '';
-    res.json({ message: `Đã gửi Lệnh & Chứng từ thành công tới Email: ${toEmail}${attachInfo}`, updatedOrders: upd2.rowCount, updatedDetails: upd1.rowCount });
+    const sentTo = isTestMode ? `${actualTo} (test mode, gốc: ${toEmail})` : actualTo;
+    res.json({ message: `Đã gửi Lệnh & Chứng từ thành công tới Email: ${sentTo}${attachInfo}`, updatedOrders: upd2.rowCount, updatedDetails: upd1.rowCount });
   } catch (err) {
     console.error('Lỗi gửi email:', err);
     res.status(500).json({ error: 'Gửi email thất bại: ' + err.message });
