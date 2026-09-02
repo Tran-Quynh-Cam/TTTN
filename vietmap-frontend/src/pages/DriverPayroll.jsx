@@ -22,8 +22,8 @@ export default function DriverPayroll() {
     setLoading(true);
     try {
       const [driversRes, ordersRes] = await Promise.all([
-        API.getStakeholders('drivers'),
-        API.getOrders()
+        API.getStakeholders('drivers').catch(() => ({ data: [] })),
+        API.getOrders().catch(() => ({ data: [] }))
       ]);
       const driverList = driversRes.data || [];
       const orderList = ordersRes.data || [];

@@ -37,18 +37,17 @@ export default function Dashboard() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [ordRes, vehRes, drvRes, maintRes, repRes] = await Promise.all([
-        API.getOrders(),
-        API.getVehicles(),
-        API.getStakeholders('drivers'),
-        API.getMaintenance(),
-        API.getRepairs(),
+      const [ordRes, vehRes, drvRes, maintRes] = await Promise.all([
+        API.getOrders().catch(() => ({ data: [] })),
+        API.getVehicles().catch(() => ({ data: [] })),
+        API.getStakeholders('drivers').catch(() => ({ data: [] })),
+        API.getMaintenance().catch(() => ({ data: [] })),
       ]);
       setOrders(ordRes.data || []);
       setVehicles(vehRes.data || []);
       setDrivers(drvRes.data || []);
       setMaint(maintRes.data || []);
-      setRepairs(repRes.data || []);
+      setRepairs([]);
 
       const storedExp = localStorage.getItem('fleet_expenses_data');
       if (storedExp) setExpenses(JSON.parse(storedExp));

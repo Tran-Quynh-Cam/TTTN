@@ -25,8 +25,8 @@ export default function Stakeholders() {
     setLoading(true);
     try {
       const [res, vRes] = await Promise.all([
-        API.getStakeholders(activeTab),
-        API.getVehicles()
+        API.getStakeholders(activeTab).catch(() => ({ data: [] })),
+        API.getVehicles().catch(() => ({ data: [] }))
       ]);
       setVehicles(vRes.data || []);
       const formatted = res.data.map(item => ({

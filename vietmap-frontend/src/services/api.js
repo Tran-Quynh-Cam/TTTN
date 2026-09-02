@@ -78,7 +78,10 @@ export const API = {
   deleteMaintenance: (id) => apiClient.delete(`/maintenance/${id}`),
 
 
-  // Users Management
+  // Stubs for removed modules
+  getTires: () => Promise.resolve({ data: [] }),
+  getRepairs: () => Promise.resolve({ data: [] }),
+
   getUsers: () => apiClient.get('/users'),
   createUser: (data) => apiClient.post('/users', data),
   updateUser: (id, data) => apiClient.put(`/users/${id}`, data),

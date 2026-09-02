@@ -783,11 +783,16 @@ app.post('/api/orders/:id/send-email', authenticateToken, async (req, res) => {
     const toEmail = order.email_tai_xe || order.driver_email || 'Tqcam1808@gmail.com';
 
     const transporter = nodemailer.createTransport({
-      service: process.env.SMTP_SERVICE || 'gmail',
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT) || 465,
+      secure: process.env.SMTP_SECURE !== 'false', // mặc định true cho cổng 465 SSL
       auth: {
         user: process.env.SMTP_USER,
         pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
 
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('vi-VN') : '—';

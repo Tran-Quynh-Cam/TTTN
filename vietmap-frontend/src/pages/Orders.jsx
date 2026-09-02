@@ -109,13 +109,13 @@ export default function Orders() {
   const fetchResources = async () => {
     try {
       const [vRes, dRes, sRes, sendRes, recRes, dvRes, locRes] = await Promise.all([
-        API.getVehicles(),
-        API.getStakeholders('drivers'),
-        API.getStakeholders('sales'),
-        API.getStakeholders('senders'),
-        API.getStakeholders('receivers'),
-        API.getStakeholders('dieuvans'),
-        API.getLocations()
+        API.getVehicles().catch(() => ({ data: [] })),
+        API.getStakeholders('drivers').catch(() => ({ data: [] })),
+        API.getStakeholders('sales').catch(() => ({ data: [] })),
+        API.getStakeholders('senders').catch(() => ({ data: [] })),
+        API.getStakeholders('receivers').catch(() => ({ data: [] })),
+        API.getStakeholders('dieuvans').catch(() => ({ data: [] })),
+        API.getLocations().catch(() => ({ data: [] }))
       ]);
       setVehicles(vRes.data || []);
       setDrivers(dRes.data || []);
@@ -133,8 +133,8 @@ export default function Orders() {
     setLoading(true);
     try {
       const [resOrders, resDocs] = await Promise.all([
-        API.getOrders(),
-        API.getDocuments()
+        API.getOrders().catch(() => ({ data: [] })),
+        API.getDocuments().catch(() => ({ data: [] }))
       ]);
       const normalizedData = (resOrders.data || []).map(o => ({
         ...o,

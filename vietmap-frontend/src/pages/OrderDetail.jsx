@@ -775,7 +775,17 @@ export default function OrderDetail({
   }, [order?.soBienNhan, order?.so_bien_nhan]);
 
   const allDocs = useMemo(() => {
-    return [...(documents || []), ...localDocs];
+    const raw = [...(documents || []), ...localDocs];
+    const unique = [];
+    const seen = new Set();
+    for (const d of raw) {
+      const key = d.id ? `id_${d.id}` : `${d.maChungTu || d.ma_chung_tu}_${d.tenFile || d.ten_file}_${d.donHang || d.don_hang}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(d);
+      }
+    }
+    return unique;
   }, [documents, localDocs]);
 
   const orderDocs = useMemo(() => {

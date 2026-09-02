@@ -227,9 +227,9 @@ export default function Dispatch() {
     setLoading(true);
     try {
       const [ordersRes, driversRes, vehiclesRes] = await Promise.all([
-        API.getOrders(),
-        API.getStakeholders('drivers'),
-        API.getVehicles()
+        API.getOrders().catch(() => ({ data: [] })),
+        API.getStakeholders('drivers').catch(() => ({ data: [] })),
+        API.getVehicles().catch(() => ({ data: [] }))
       ]);
       setOrders(ordersRes.data || []);
       setDrivers(driversRes.data || []);
