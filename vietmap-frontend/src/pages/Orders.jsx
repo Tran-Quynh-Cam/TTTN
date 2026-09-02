@@ -221,22 +221,6 @@ export default function Orders() {
       });
     } else {
       form.resetFields();
-      form.setFieldsValue({
-        soBienNhan: `DH${dayjs().format('YYMM')}-${Math.floor(100 + Math.random() * 900)}`,
-        loaiDonHang: 'Xuất quốc tế',
-        trangThai: 'chua_bat_dau',
-        loaiCont: '20DC',
-        soLuongCont: 1,
-        ngayTao: dayjs(),
-        noiLay: 'Depot Tân Cảng',
-        noiGiao: 'Cảng Cát Lái',
-        noiHa: '',
-        cuocPhi: 12500000,
-        hangHoa: 'Cá Ba Sa (-18 đến -15 độ C)',
-        tenKhachHang: 'CÔNG TY CỔ PHẦN TIẾP VẬN SIÊU TỐC',
-        mstKhachHang: '0200872512',
-        diaChiVat: 'Tổ dân phố Tân Thanh, phường Hồng An, Thành phố Hải Phòng, Việt Nam'
-      });
     }
   };
 
@@ -594,11 +578,38 @@ export default function Orders() {
 
           <div style={{ fontWeight: 700, color: '#1677ff', margin: '12px 0 8px 0', paddingBottom: 6, borderBottom: '2px solid #e6f4ff' }}>Thông tin Container & Lộ trình</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0 16px' }}>
-            <Form.Item name="loaiCont" label="Loại Cont"><Select options={CONT_TYPES.map(c => ({ value: c, label: c }))} /></Form.Item>
-            <Form.Item name="soLuongCont" label="Số lượng Cont"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="noiLay" label="1. Nơi lấy vỏ/hàng"><AutoComplete options={LOCATION_OPTIONS} placeholder="Chọn hoặc nhập địa điểm..." filterOption={(i, o) => o.value.toLowerCase().includes(i.toLowerCase())} /></Form.Item>
-            <Form.Item name="noiGiao" label="2. Nơi giao vỏ/hàng"><AutoComplete options={LOCATION_OPTIONS} placeholder="Chọn hoặc nhập địa điểm..." filterOption={(i, o) => o.value.toLowerCase().includes(i.toLowerCase())} /></Form.Item>
-            <Form.Item name="noiHa" label="3. Nơi hạ hàng/vỏ" style={{ gridColumn: 'span 2' }}><AutoComplete options={LOCATION_OPTIONS} placeholder="Chọn hoặc nhập địa điểm..." filterOption={(i, o) => o.value.toLowerCase().includes(i.toLowerCase())} /></Form.Item>
+            <Form.Item name="loaiCont" label="Loại Cont"><Select placeholder="Chọn loại Cont..." options={CONT_TYPES.map(c => ({ value: c, label: c }))} allowClear /></Form.Item>
+            <Form.Item name="soLuongCont" label="Số lượng Cont"><InputNumber min={1} placeholder="Nhập số lượng cont..." style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="noiLay" label="1. Nơi lấy vỏ/hàng">
+              <Select showSearch allowClear placeholder="Chọn nơi lấy hàng/vỏ..." options={
+                (dbLocations && dbLocations.length > 0)
+                  ? [
+                      ...dbLocations.map(l => ({ value: l.ten_diem || l.name, label: l.ten_diem || l.name })),
+                      ...STANDARD_LOCATIONS.filter(s => !dbLocations.some(l => (l.ten_diem || l.name) === s)).map(loc => ({ value: loc, label: loc }))
+                    ]
+                  : STANDARD_LOCATIONS.map(loc => ({ value: loc, label: loc }))
+              } filterOption={(i, o) => (o?.label || o?.value || '').toLowerCase().includes(i.toLowerCase())} />
+            </Form.Item>
+            <Form.Item name="noiGiao" label="2. Nơi giao vỏ/hàng">
+              <Select showSearch allowClear placeholder="Chọn nơi giao hàng/vỏ..." options={
+                (dbLocations && dbLocations.length > 0)
+                  ? [
+                      ...dbLocations.map(l => ({ value: l.ten_diem || l.name, label: l.ten_diem || l.name })),
+                      ...STANDARD_LOCATIONS.filter(s => !dbLocations.some(l => (l.ten_diem || l.name) === s)).map(loc => ({ value: loc, label: loc }))
+                    ]
+                  : STANDARD_LOCATIONS.map(loc => ({ value: loc, label: loc }))
+              } filterOption={(i, o) => (o?.label || o?.value || '').toLowerCase().includes(i.toLowerCase())} />
+            </Form.Item>
+            <Form.Item name="noiHa" label="3. Nơi hạ hàng/vỏ" style={{ gridColumn: 'span 2' }}>
+              <Select showSearch allowClear placeholder="Chọn nơi hạ hàng/vỏ..." options={
+                (dbLocations && dbLocations.length > 0)
+                  ? [
+                      ...dbLocations.map(l => ({ value: l.ten_diem || l.name, label: l.ten_diem || l.name })),
+                      ...STANDARD_LOCATIONS.filter(s => !dbLocations.some(l => (l.ten_diem || l.name) === s)).map(loc => ({ value: loc, label: loc }))
+                    ]
+                  : STANDARD_LOCATIONS.map(loc => ({ value: loc, label: loc }))
+              } filterOption={(i, o) => (o?.label || o?.value || '').toLowerCase().includes(i.toLowerCase())} />
+            </Form.Item>
             <Form.Item name="ghiChu" label="Ghi chú đơn hàng" style={{ gridColumn: 'span 2' }}><Input placeholder="Ghi chú lộ trình..." /></Form.Item>
           </div>
         </Form>
